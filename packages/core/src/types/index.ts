@@ -14,6 +14,7 @@ export type {
 } from './workspace.ts';
 
 export type { ContextUsageSnapshot } from './context-usage.ts';
+export type { SessionGoal } from './goal.ts';
 
 // Session types
 export type {

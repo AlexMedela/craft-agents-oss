@@ -12,7 +12,7 @@
 import type { PermissionMode } from '../agent/mode-manager.ts';
 import type { ThinkingLevel } from '../agent/thinking-levels.ts';
 import type { BoundPr, PrMonitorState } from '../protocol/pr-watch.ts';
-import type { StoredAttachment, MessageRole, ToolStatus, AuthRequestType, AuthStatus, CredentialInputMode, StoredMessage, ContextUsageSnapshot } from '@craft-agent/core/types';
+import type { StoredAttachment, MessageRole, ToolStatus, AuthRequestType, AuthStatus, CredentialInputMode, StoredMessage, ContextUsageSnapshot, SessionGoal } from '@craft-agent/core/types';
 
 /**
  * Session fields that persist to disk.
@@ -43,6 +43,8 @@ export const SESSION_PERSISTENT_FIELDS = [
   'boundPrs',
   // Coding mode: per-PR monitor state (auto-fix toggle + what it last acted on), keyed by PR id
   'prMonitors',
+  // Claude /goal: the goal the SDK pursues, mirrored for the UI (see sessions/goal.ts)
+  'goal',
   // Sharing
   'sharedUrl', 'sharedId',
   // Plan execution
@@ -175,6 +177,8 @@ export interface SessionConfig {
   boundPrs?: BoundPr[];
   /** Coding mode: per-PR monitor state (auto-fix), keyed by PR id `host/owner/repo#number`. */
   prMonitors?: Record<string, PrMonitorState>;
+  /** Claude /goal: the goal the SDK pursues for this session (see sessions/goal.ts). */
+  goal?: SessionGoal;
   /**
    * Pending plan execution state - tracks "Accept & Compact" flow.
    * When set, indicates a plan needs to be executed after compaction completes.
@@ -325,6 +329,8 @@ export interface SessionHeader {
   boundPrs?: BoundPr[];
   /** Coding mode: per-PR monitor state (auto-fix), keyed by PR id `host/owner/repo#number`. */
   prMonitors?: Record<string, PrMonitorState>;
+  /** Claude /goal: the goal the SDK pursues for this session (see sessions/goal.ts). */
+  goal?: SessionGoal;
   /**
    * Pending plan execution state - tracks "Accept & Compact" flow.
    * When set, indicates a plan needs to be executed after compaction completes.
@@ -446,6 +452,8 @@ export interface SessionMetadata {
   boundPrs?: BoundPr[];
   /** Coding mode: per-PR monitor state (auto-fix), keyed by PR id `host/owner/repo#number`. */
   prMonitors?: Record<string, PrMonitorState>;
+  /** Claude /goal: the goal the SDK pursues for this session (see sessions/goal.ts). */
+  goal?: SessionGoal;
   /** ID of last message user has read - for unread detection */
   lastReadMessageId?: string;
   /** ID of the last final (non-intermediate) assistant message - for unread detection */

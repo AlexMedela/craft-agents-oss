@@ -6,6 +6,7 @@
  */
 
 import type { Session, SessionEvent, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta } from '../../shared/types'
+import type { SessionGoal } from '@craft-agent/core/types'
 
 /** Explicit SDK retry boundaries; keep their transport shape authoritative. */
 export type TextDiscardEvent = Extract<SessionEvent, { type: 'text_discard' }>
@@ -162,6 +163,15 @@ export interface CodingModeChangedEvent {
   type: 'coding_mode_changed'
   sessionId: string
   codingMode: boolean
+}
+
+/**
+ * Claude /goal: the goal the SDK pursues changed (null: no goal)
+ */
+export interface GoalChangedEvent {
+  type: 'goal_changed'
+  sessionId: string
+  goal: SessionGoal | null
 }
 
 /**
@@ -569,6 +579,7 @@ export type AgentEvent =
   | SourcesChangedEvent
   | CodingModeChangedEvent
   | LabelsChangedEvent
+  | GoalChangedEvent
   | ProjectIdChangedEvent
   | SessionStatusChangedEvent
   | SessionMetadataChangedEvent

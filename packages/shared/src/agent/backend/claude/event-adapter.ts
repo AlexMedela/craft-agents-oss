@@ -20,6 +20,7 @@ import { createAgentError, type AgentError } from '../../errors.ts';
 import { BaseEventAdapter } from '../base-event-adapter.ts';
 import { ToolIndex, extractToolStarts, extractToolResults, isParentTaskTool, type ContentBlock, type ToolResultBlock, type ToolUseBlock } from '../../tool-matching.ts';
 import { classifyClaudeTaskNotification, classifyClaudeTaskProgress } from './task-notification.ts';
+import { isStopHookFeedback } from '../../../sessions/goal.ts';
 
 /**
  * Callbacks injected by ClaudeAgent for operations that depend on agent state.
@@ -76,6 +77,19 @@ interface AssistantUsage {
 export function isToolHeartbeat(progress: { tool_use_id: string; parent_tool_use_id: string | null }): boolean {
   return /-heartbeat-\d+$/.test(progress.tool_use_id)
     && (!progress.parent_tool_use_id || progress.tool_use_id.startsWith(`${progress.parent_tool_use_id}-heartbeat-`));
+}
+
+/** The text of a synthetic Stop hook feedback message to the session's agent, or null. */
+function stopHookFeedbackText(message: SDKMessage): string | null {
+  const m = message as { isSynthetic?: boolean; parent_tool_use_id?: string | null; message?: { content?: unknown } };
+  if (!m.isSynthetic || m.parent_tool_use_id) return null;
+  const content = m.message?.content;
+  const text = typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content.map(block => (block as { type?: string; text?: unknown })?.type === 'text' ? String((block as { text?: unknown }).text ?? '') : '').join('')
+      : '';
+  return isStopHookFeedback(text) ? text : null;
 }
 
 export class ClaudeEventAdapter extends BaseEventAdapter {
@@ -180,6 +194,12 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
         ? `user (tool_result for ${(message as any).parent_tool_use_id})`
         : message.type;
       this.callbacks.onDebug(`SDK message: ${msgInfo}`);
+    }
+
+    // Claude /goal: the SDK's goal state (not in the SDKMessage union; sent when the SDK reports it)
+    if ((message as { type?: string }).type === 'active_goal') {
+      this.adaptActiveGoal(message, events);
+      return events;
     }
 
     switch (message.type) {
@@ -469,6 +489,13 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
       return;
     }
 
+    // Claude /goal: a check that found the condition not met yet reaches the agent as Stop hook feedback
+    const feedback = stopHookFeedbackText(message);
+    if (feedback) {
+      events.push({ type: 'goal_feedback', text: feedback });
+      return;
+    }
+
     // Tool result matching
     if ((message as any).tool_use_result !== undefined || ('message' in message && (message as any).message)) {
       const msgContent = ('message' in message && (message as any).message)
@@ -623,7 +650,7 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
     }
 
     if (msg.subtype === 'success') {
-      events.push({ type: 'complete', usage });
+      events.push({ type: 'complete', usage, sdkResult: 'success' });
     } else {
       const errorMsg = 'errors' in msg ? msg.errors.join(', ') : 'Query failed';
 
@@ -633,7 +660,23 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
       } else {
         events.push({ type: 'error', message: errorMsg });
       }
-      events.push({ type: 'complete', usage });
+      events.push({ type: 'complete', usage, sdkResult: 'error' });
+    }
+  }
+
+  private adaptActiveGoal(message: unknown, events: AgentEvent[]): void {
+    const value = (message as { value?: { condition?: unknown; iterations?: unknown; last_reason?: unknown } | null }).value;
+    if (value === null || value === undefined) {
+      events.push({ type: 'goal_state', goal: null });
+    } else if (typeof value.condition === 'string') {
+      events.push({
+        type: 'goal_state',
+        goal: {
+          condition: value.condition,
+          iterations: typeof value.iterations === 'number' ? value.iterations : 0,
+          ...(typeof value.last_reason === 'string' ? { lastReason: value.last_reason } : {}),
+        },
+      });
     }
   }
 

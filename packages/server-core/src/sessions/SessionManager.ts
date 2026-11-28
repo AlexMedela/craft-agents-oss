@@ -38,7 +38,7 @@ import {
   type Workspace,
   type WorkspaceInfo,
 } from '@craft-agent/shared/config'
-import type { ActiveSessionInfo, ContextUsageSnapshot, PermissionRisk, SessionProcessingStatus } from '@craft-agent/core/types'
+import type { ActiveSessionInfo, ContextUsageSnapshot, PermissionRisk, SessionGoal, SessionProcessingStatus } from '@craft-agent/core/types'
 import { loadWorkspaceConfig } from '@craft-agent/shared/workspaces'
 import {
   // Session persistence functions
@@ -73,6 +73,10 @@ import {
   type SessionStatus,
   type SessionHeader,
   pickSessionFields,
+  parseGoalCommand,
+  nextGoal,
+  type GoalCommand,
+  type GoalSignal,
 } from '@craft-agent/shared/sessions'
 import { serializeHeaderCredential, loadWorkspaceSources, loadAllSources, getSourcesBySlugs, isSourceUsable, type LoadedSource, type McpServerConfig, getSourcesNeedingAuth, getSourceCredentialManager, TokenRefreshManager } from '@craft-agent/shared/sources'
 import { buildTaskSessionContext, listTaskSlugs, loadTaskSpec, parseTaskSpec, taskSubtasks, taskYamlPath, uniqueTaskSlug, type TaskSpec } from '@craft-agent/shared/tasks'
@@ -837,6 +841,10 @@ interface ManagedSession {
   boundPrs?: BoundPr[]
   // Coding mode: per-PR monitor state (auto-fix toggle + what it last acted on), keyed by PR id
   prMonitors?: Record<string, PrMonitorState>
+  // Claude /goal: the goal the SDK pursues, mirrored for the UI (see shared/sessions/goal.ts)
+  goal?: SessionGoal
+  // Claude /goal: the /goal command the running turn runs (runtime-only, not persisted)
+  goalTurnCommand?: GoalCommand | null
   // System prompt preset for mini agents ('default' | 'mini')
   systemPromptPreset?: 'default' | 'mini' | string
   // Role/type of the last message (for badge display without loading messages)
@@ -7005,6 +7013,8 @@ export class SessionManager implements ISessionManager {
     // one exception: that command is what transitions the pending record from
     // awaiting → ready. Any other message remains a safety valve that cancels it.
     const isCompactCommand = /^\/compact(\s|$)/i.test(message.trim())
+    // Claude /goal: an SDK command like /compact (sent as typed, never steered into a running turn)
+    const goalCommand = parseGoalCommand(message)
     if (!isCompactCommand) {
       delete managed.pendingPlanExecution
       await clearStoredPendingPlanExecution(managed.workspace.rootPath, sessionId)
@@ -7045,7 +7055,7 @@ export class SessionManager implements ISessionManager {
       // queued right away, like any queued message, and the model decides in the background whether
       // it corrects the running work and should be steered in (steerQueuedIfDecided). Recording
       // first keeps send order and leaves the queue the single source of truth.
-      const decideDelivery = canSteerTextPayload(attachments, storedAttachments, options) && this.decisionFeatureActive('midTurnMessages')
+      const decideDelivery = !goalCommand && canSteerTextPayload(attachments, storedAttachments, options) && this.decisionFeatureActive('midTurnMessages')
       const behavior = decideDelivery ? 'queue' : configured
 
       // Create user message for UI
@@ -7069,7 +7079,7 @@ export class SessionManager implements ISessionManager {
       // A manual compaction owns the turn: nothing consumes steers, so queue for
       // replay after `complete` instead of steering (OSS #1058). Not an interruption.
       const compactionInFlight = agent?.isCompactionInFlight?.() === true
-      const attemptedSteer = !behindQueuedMessages && shouldAttemptMidStreamSteer(behavior, textOnly, agent)
+      const attemptedSteer = !behindQueuedMessages && !goalCommand && shouldAttemptMidStreamSteer(behavior, textOnly, agent)
       const steered = attemptedSteer && agent
         ? agent.redirect(message, { messageId: userMessage.id })
         : false
@@ -7352,8 +7362,9 @@ export class SessionManager implements ISessionManager {
       // as `turnContext`: the model sees it after the message, in <system-reminder> tags, but it
       // is not part of the stored message nor of the resend after a source activation.
       const turnContext: string[] = []
-      // A /compact turn takes no turn context, so the notice waits for the next real turn.
-      if (managed.wasInterrupted && !isCompactCommand) {
+      // A /compact or /goal turn takes no turn context, so the notice waits for the next real turn.
+      const isSdkCommand = isCompactCommand || !!goalCommand
+      if (managed.wasInterrupted && !isSdkCommand) {
         turnContext.push('<system-reminder>The previous assistant response was interrupted by the user and may be incomplete. Do not repeat or continue the interrupted response unless asked. Focus on the new message above.</system-reminder>')
         managed.wasInterrupted = false
       }
@@ -7396,11 +7407,17 @@ export class SessionManager implements ISessionManager {
       if (suggestionHint) turnContext.push(suggestionHint)
       // A /compact turn takes no context: text around it would become compaction instructions (a
       // task's spec then goes with the next turn).
-      const sessionContext = isCompactCommand ? null : this.takeTaskSessionContext(managed, _isAuthRetry)
+      const sessionContext = isSdkCommand ? null : this.takeTaskSessionContext(managed, _isAuthRetry)
       const chatOptions: ChatOptions = {
         ...(thinkingOverride ? { thinkingOverride } : {}),
         ...(sessionContext ? { sessionContext } : {}),
-        ...(turnContext.length > 0 && !isCompactCommand ? { turnContext: turnContext.join('\n\n') } : {}),
+        ...(turnContext.length > 0 && !isSdkCommand ? { turnContext: turnContext.join('\n\n') } : {}),
+      }
+
+      // Claude /goal: the SDK runs the loop; mirror its state from this turn on
+      managed.goalTurnCommand = agent.supportsGoals ? goalCommand : null
+      if (agent.supportsGoals) {
+        this.applyGoalSignal(managed, { type: 'turn_start', command: goalCommand, fromUser: managed.turnFromUser !== false, at: Date.now() })
       }
 
       sendSpan.mark('chat.starting')
@@ -9068,6 +9085,23 @@ export class SessionManager implements ISessionManager {
     }
   }
 
+  /** Claude /goal: apply a goal signal; on a change, persist it and tell the renderer. */
+  private applyGoalSignal(managed: ManagedSession, signal: GoalSignal): void {
+    const next = nextGoal(managed.goal, signal)
+    if (next === managed.goal) return
+    managed.goal = next
+    sessionLog.info(`Session ${managed.id}: goal ${next ? `${next.status} (${next.iterations} not met)` : 'cleared'}`)
+    this.persistSession(managed)
+    this.sendEvent({ type: 'goal_changed', sessionId: managed.id, goal: next ?? null }, managed.workspace.id)
+  }
+
+  /** Claude /goal: a goal check in the transcript (an info row, kept with the session). */
+  private addGoalInfo(managed: ManagedSession, content: string): void {
+    const timestamp = this.monotonic()
+    managed.messages.push({ id: generateMessageId(), role: 'info', content, timestamp })
+    this.sendEvent({ type: 'info', sessionId: managed.id, message: content, timestamp }, managed.workspace.id)
+  }
+
   /** Coding mode: PRs pinned to a session (chat-header PR carousel), in addedAt order. */
   getSessionBoundPrs(sessionId: string): BoundPr[] {
     return this.sessions.get(sessionId)?.boundPrs ?? []
@@ -10162,7 +10196,36 @@ export class SessionManager implements ISessionManager {
         sessionLog.info(`Session ${sessionId}: compaction failed, cleared pending plan execution`)
         break
 
+      case 'goal_feedback': {
+        // The goal check found the condition not met yet: the SDK goes on, the transcript shows why
+        const before = managed.goal
+        this.applyGoalSignal(managed, { type: 'feedback', text: event.text })
+        if (managed.goal !== before && managed.goal?.lastReason) {
+          this.addGoalInfo(managed, `Goal not met yet: ${managed.goal.lastReason}`)
+        }
+        break
+      }
+
+      case 'goal_state':
+        this.applyGoalSignal(managed, { type: 'sdk_state', goal: event.goal, at: Date.now() })
+        break
+
       case 'complete':
+        // Claude /goal: with a goal active, the SDK ends a turn once its condition is met
+        if (event.sdkResult && managed.goal?.status === 'active') {
+          this.applyGoalSignal(managed, {
+            type: 'turn_end',
+            command: managed.goalTurnCommand ?? null,
+            outcome: event.sdkResult,
+            backgroundWorkRunning: [...managed.backgroundTaskRegistry.values()].some(task => task.status === 'running'),
+            at: Date.now(),
+          })
+          // (re-read: applyGoalSignal changed it)
+          const goal = managed.goal as SessionGoal | undefined
+          if (goal?.status === 'achieved') {
+            this.addGoalInfo(managed, `Goal achieved${goal.iterations > 0 ? ` after ${goal.iterations + 1} checks` : ''}: ${goal.condition}`)
+          }
+        }
         // Complete event from CraftAgent - accumulate usage from this turn
         // Actual 'complete' sent to renderer comes from the finally block in sendMessage
         if (event.usage) {

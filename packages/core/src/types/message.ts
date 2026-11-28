@@ -605,7 +605,8 @@ export type AgentEvent =
     }
   | { type: 'error'; message: string }
   | { type: 'typed_error'; error: TypedError }
-  | { type: 'complete'; usage?: AgentEventUsage }
+  /** sdkResult: the turn ended with the SDK's own result message (not stopped or failed on Craft's side). */
+  | { type: 'complete'; usage?: AgentEventUsage; sdkResult?: 'success' | 'error' }
   | { type: 'working_directory_changed'; workingDirectory: string }
   | { type: 'task_backgrounded'; toolUseId: string; taskId: string; intent?: string; turnId?: string; kind?: 'workflow' | 'task'; workflowId?: string }
   | { type: 'shell_backgrounded'; toolUseId: string; shellId: string; intent?: string; command?: string; turnId?: string }
@@ -619,6 +620,10 @@ export type AgentEvent =
   | { type: 'usage_update'; usage: Pick<AgentEventUsage, 'inputTokens' | 'contextWindow'> }
   | { type: 'context_usage'; contextUsage: ContextUsageSnapshot }
   | { type: 'compaction_failed' }
+  /** Claude `/goal`: the evaluator found the condition not met yet (SDK Stop hook feedback, raw text). */
+  | { type: 'goal_feedback'; text: string }
+  /** Claude `/goal`: the SDK's own goal state (`active_goal`); null once it is cleared or met. */
+  | { type: 'goal_state'; goal: { condition: string; iterations: number; lastReason?: string } | null }
   | { type: 'steer_undelivered'; message: string; messageId?: string };
 
 /**

@@ -462,6 +462,8 @@ const buildWindowsSkillsDirError = buildWindowsSkillsDirErrorFn;
 
 export class ClaudeAgent extends BaseAgent {
   protected backendName = 'Claude';
+  /** The SDK runs `/goal` (see SDK_SLASH_COMMANDS in chatImpl) */
+  readonly supportsGoals = true;
   // The constructor's whole config is the inherited this.config (see ClaudeAgentConfig)
   private currentQuery: Query | null = null;
   private currentQueryAbortController: AbortController | null = null;
@@ -1807,8 +1809,8 @@ export class ClaudeAgent extends BaseAgent {
 
       // Known SDK slash commands that bypass context wrapping.
       // These are sent directly to the SDK without date/session/source context.
-      // Currently only 'compact' is supported - add more here as needed.
-      const SDK_SLASH_COMMANDS = ['compact'] as const;
+      // 'goal' runs the SDK's own goal loop (/goal <condition>, /goal, /goal clear).
+      const SDK_SLASH_COMMANDS = ['compact', 'goal'] as const;
 
       // Detect SDK slash commands - must be sent directly without context wrapping.
       // Pattern: /command or /command <instructions>

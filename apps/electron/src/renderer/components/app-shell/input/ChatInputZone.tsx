@@ -14,6 +14,7 @@ import { ActiveOptionBadges } from '../ActiveOptionBadges'
 import { InputContainer } from './InputContainer'
 import { InputErrorBoundary } from './InputErrorBoundary'
 import { ComposerHintLine } from './ComposerHintLine'
+import { GoalBanner } from './GoalBanner'
 import { COMPOSER_META_CHIP } from './composer-styles'
 
 /**
@@ -162,6 +163,13 @@ export function ChatInputZone({
       {pastedSnippet && onRunCommand && (
         <PastedCommandChip command={pastedSnippet.command} onRun={handleRunPasted} onDismiss={() => setPastedSnippet(null)} />
       )}
+
+      {/* Claude /goal: the goal the agent works toward, attached to the top of the card */}
+      <GoalBanner
+        sessionId={sessionId}
+        isProcessing={!!inputProps.isProcessing}
+        onClear={() => inputProps.onSubmit('/goal clear', [])}
+      />
 
       <InputErrorBoundary
         sessionId={sessionId}

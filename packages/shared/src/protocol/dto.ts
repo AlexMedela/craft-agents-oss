@@ -13,6 +13,7 @@ import type {
   ToolDisplayMeta,
   AnnotationV1,
   ContextUsageSnapshot,
+  SessionGoal,
   PermissionRequest as BasePermissionRequest,
 } from '@craft-agent/core/types'
 import type { PermissionMode } from '../agent/mode-types'
@@ -82,6 +83,8 @@ export interface Session {
   boundPrs?: BoundPr[]
   /** Coding mode: per-PR monitor state (auto-fix), keyed by PR id */
   prMonitors?: Record<string, PrMonitorState>
+  /** Claude /goal: the goal the SDK pursues for this session */
+  goal?: SessionGoal
   lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error'
   lastFinalMessageId?: string
   isAsyncOperationOngoing?: boolean
@@ -468,6 +471,7 @@ export type SessionEvent =
   | { type: 'plan_submitted'; sessionId: string; message: Message }
   | { type: 'sources_changed'; sessionId: string; enabledSourceSlugs: string[] }
   | { type: 'coding_mode_changed'; sessionId: string; codingMode: boolean }
+  | { type: 'goal_changed'; sessionId: string; goal: SessionGoal | null }
   | { type: 'labels_changed'; sessionId: string; labels: string[] }
   | { type: 'project_id_changed'; sessionId: string; projectId: string | null }
   | { type: 'connection_changed'; sessionId: string; connectionSlug: string; supportsBranching?: boolean }

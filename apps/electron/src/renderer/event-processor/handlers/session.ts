@@ -14,6 +14,7 @@ import type {
   SourcesChangedEvent,
   CodingModeChangedEvent,
   LabelsChangedEvent,
+  GoalChangedEvent,
   ProjectIdChangedEvent,
   SessionStatusChangedEvent,
   SessionMetadataChangedEvent,
@@ -696,6 +697,27 @@ export function handleCodingModeChanged(
       streaming,
     },
     effects: [{ type: 'coding_mode_changed', sessionId: event.sessionId, codingMode: event.codingMode }],
+  }
+}
+
+/**
+ * Handle goal_changed - update the session's Claude /goal state
+ */
+export function handleGoalChanged(
+  state: SessionState,
+  event: GoalChangedEvent
+): ProcessResult {
+  const { session, streaming } = state
+
+  return {
+    state: {
+      session: {
+        ...session,
+        goal: event.goal ?? undefined,
+      },
+      streaming,
+    },
+    effects: [],
   }
 }
 

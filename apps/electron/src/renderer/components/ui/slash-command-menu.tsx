@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useTranslation } from "react-i18next"
 import { Command as CommandPrimitive } from 'cmdk'
-import { Check, Minimize2 } from 'lucide-react'
+import { Check, Minimize2, Target } from 'lucide-react'
 import { Icon_Folder } from '@craft-agent/ui'
 import { cn } from '@/lib/utils'
 import {
@@ -20,7 +20,7 @@ import { DEFAULT_PERMISSION_MODES, PERMISSION_MODE_CONFIG, PERMISSION_MODE_ORDER
 // Types
 // ============================================================================
 
-export type SlashCommandId = PermissionMode | 'compact'
+export type SlashCommandId = PermissionMode | 'compact' | 'goal'
 
 /** Union type for all item types in the slash menu */
 export type SlashItemType = 'command' | 'folder'
@@ -114,9 +114,18 @@ const compactCommand: SlashCommand = {
   icon: <Minimize2 className={MENU_ICON_SIZE} />,
 }
 
+// Claude /goal: picking it leaves `/goal ` in the input for the condition (FreeFormInput)
+const goalCommand: SlashCommand = {
+  id: 'goal',
+  label: 'Set Goal',
+  description: 'Keep working until a condition is met (Claude /goal)',
+  icon: <Target className={MENU_ICON_SIZE} />,
+}
+
 export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
   ...permissionModeCommands,
   compactCommand,
+  goalCommand,
 ]
 
 export const DEFAULT_SLASH_COMMAND_GROUPS: CommandGroup[] = [
@@ -625,7 +634,7 @@ export function useInlineSlashCommand({
     result.push({
       id: 'commands',
       label: 'Commands',
-      items: [compactCommand],
+      items: [compactCommand, goalCommand],
     })
 
     // Recent folders section - sorted alphabetically by folder name, show all

@@ -27,6 +27,7 @@ import { containerTransitionsComponents } from './container-transitions'
 import { apiKeyInputComponents } from './api-key-input'
 import { messagingComponents } from './messaging'
 import { imageSupportComponents } from './image-support'
+import { goalBannerComponents } from './goal-banner'
 import { mobileWebUIComponents } from './mobile-webui'
 import { kanbanComponents } from './kanban'
 import { taskEditorComponents } from './task-editor'
@@ -74,6 +75,7 @@ export const componentRegistry: ComponentEntry[] = [
   ...containerTransitionsComponents,
   ...messagingComponents,
   ...imageSupportComponents,
+  ...goalBannerComponents,
 ]
 
 export function getCategories(): CategoryGroup[] {

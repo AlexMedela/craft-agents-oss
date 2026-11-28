@@ -556,6 +556,9 @@ export interface AgentBackend {
   /** Whether this backend supports session branching */
   readonly supportsBranching: boolean;
 
+  /** Whether this backend runs the SDK's `/goal` loop (Claude); absent means no */
+  readonly supportsGoals?: boolean;
+
   // ============================================================
   // Source Management
   // ============================================================

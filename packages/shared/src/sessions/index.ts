@@ -23,6 +23,10 @@ export type {
 // Field constants
 export { SESSION_PERSISTENT_FIELDS } from './types.ts';
 
+// Goals (Claude /goal)
+export { GOAL_CONDITION_MAX_LENGTH, parseGoalCommand, isStopHookFeedback, goalFeedbackReason, nextGoal } from './goal.ts';
+export type { GoalCommand, GoalSignal } from './goal.ts';
+
 // Storage functions
 export {
   // Directory utilities

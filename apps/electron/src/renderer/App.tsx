@@ -1418,14 +1418,15 @@ export default function App() {
         : []
       const badges: ContentBadge[] = [...(externalBadges || []), ...mentionBadges]
 
-      // Step 4.1: Detect SDK slash commands (e.g., /compact) and create command badges
+      // Step 4.1: Detect SDK slash commands (e.g., /compact, /goal) and create command badges
       // This makes /compact render as an inline badge rather than raw text
       const commandMatch = message.match(/^\/([a-z]+)(\s|$)/i)
-      if (commandMatch && commandMatch[1].toLowerCase() === 'compact') {
+      const commandLabel = ({ compact: 'Compact', goal: 'Goal' } as Record<string, string>)[commandMatch?.[1].toLowerCase() ?? '']
+      if (commandMatch && commandLabel) {
         const commandText = commandMatch[0].trimEnd() // "/compact" without trailing space
         badges.unshift({
           type: 'command',
-          label: 'Compact',
+          label: commandLabel,
           rawText: commandText,
           start: 0,
           end: commandText.length,

@@ -1411,10 +1411,13 @@ export function FreeFormInput({
 
   // Handle inline slash command selection (removes the /command text)
   const handleInlineSlashCommandSelect = React.useCallback((commandId: SlashCommandId) => {
-    const newValue = inlineSlash.handleSelectCommand(commandId)
+    const rest = inlineSlash.handleSelectCommand(commandId)
+    // /goal takes its condition after the command: leave it in the input, ready to type
+    const newValue = commandId === 'goal' ? `/goal ${rest}` : rest
     setInput(newValue)
     syncToParent(newValue)
     richInputRef.current?.focus()
+    if (commandId === 'goal') setTimeout(() => richInputRef.current?.setSelectionRange(newValue.length, newValue.length), 0)
   }, [inlineSlash, syncToParent])
 
   // Handle inline slash folder selection (inserts a directory badge)
